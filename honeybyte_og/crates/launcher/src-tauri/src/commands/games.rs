@@ -1,0 +1,355 @@
+use tauri::Emitter;
+use tauri::Manager;
+use tauri::State;
+use tauri_plugin_opener::OpenerExt;
+
+use crate::discovery;
+use crate::discovery::steam::ScanOutcome;
+use crate::models::{Game, GameSource};
+use crate::state::AppState;
+
+#[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a Tauri command receives its arguments by value"
+)]
+pub(crate) fn get_games(state: State<'_, AppState>) -> Vec<Game> {
+    let launcher = state.launcher.lock();
+    launcher.games.clone()
+}
+
+/// Fold a Steam scan result into the stored library, always carrying
+/// `play_time` and `last_played` across.
+///
+/// The scan speaks only for Steam games, so entries from any other source are
+/// always kept. For Steam games a COMPLETE scan is authoritative: entries it
+/// omits really are uninstalled. A PARTIAL scan is not -- Steam was
+/// unreachable, or a library on an unmounted drive failed to read -- so stored
+/// Steam games it does not mention are kept. Dropping either kind permanently
+/// erases its playtime, unattended, because `scan_on_startup` defaults to true.
+fn merge_scan(existing: &[Game], outcome: ScanOutcome) -> Vec<Game> {
+    let ScanOutcome {
+        mut games,
+        complete,
+    } = outcome;
+
+    for new_game in &mut games {
+        if let Some(prev) = existing.iter().find(|g| g.id == new_game.id) {
+            new_game.last_played.clone_from(&prev.last_played);
+            new_game.play_time_minutes = prev.play_time_minutes;
+        }
+    }
+
+    let scanned: std::collections::HashSet<&str> = games.iter().map(|g| g.id.as_str()).collect();
+    let mut kept: Vec<Game> = existing
+        .iter()
+        .filter(|g| !scanned.contains(g.id.as_str()))
+        .filter(|g| g.source != GameSource::Steam || !complete)
+        .cloned()
+        .collect();
+    let unreached = kept
+        .iter()
+        .filter(|g| g.source == GameSource::Steam)
+        .count();
+    if unreached > 0 {
+        tracing::warn!(
+            "Partial Steam scan -- keeping {unreached} stored game(s) the scan did not reach"
+        );
+    }
+    if !kept.is_empty() {
+        games.append(&mut kept);
+        games.sort_by_key(|g| g.name.to_lowercase());
+    }
+
+    games
+}
+
+#[tauri::command]
+pub(crate) async fn scan_games(state: State<'_, AppState>) -> Result<Vec<Game>, String> {
+    tracing::info!("scan_games: starting Steam discovery");
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let result = discovery::steam::discover_steam_games();
+        if tx.send(result).is_err() {
+            tracing::warn!("Steam scan finished after the caller went away");
+        }
+    });
+    let outcome = rx.await.map_err(|e| format!("Scan task failed: {e}"))?;
+    tracing::info!(
+        "scan_games: found {} games (complete: {})",
+        outcome.games.len(),
+        outcome.complete
+    );
+
+    let mut launcher = state.launcher.lock();
+    launcher.games = merge_scan(&launcher.games, outcome);
+    let games = launcher.games.clone();
+    drop(launcher);
+    if let Err(e) = state.save() {
+        tracing::error!("Failed to save state: {e}");
+    }
+    Ok(games)
+}
+
+#[tauri::command]
+pub(crate) async fn launch_game(game_id: String, app: tauri::AppHandle) -> Result<String, String> {
+    // Reserve the session slot atomically (guard + insert) so two rapid launches
+    // cannot both start the same game.
+    {
+        let state = app.state::<AppState>();
+        let mut sessions = state.active_sessions.lock();
+        if sessions.contains(&game_id) {
+            return Err("This game is already running".to_string());
+        }
+        sessions.insert(game_id.clone());
+    }
+
+    match do_launch(&app, &game_id) {
+        Ok(()) => Ok("launching".to_string()),
+        Err(e) => {
+            // Release the reservation so the game can be launched again.
+            app.state::<AppState>()
+                .active_sessions
+                .lock()
+                .remove(&game_id);
+            Err(e)
+        }
+    }
+}
+
+/// Launch the game and attach the playtime watcher. The caller has already
+/// reserved `game_id` in `active_sessions`; on `Err` the caller releases it, and
+/// on the no-watcher path this releases it after emitting a terminal event.
+fn do_launch(app: &tauri::AppHandle, game_id: &str) -> Result<(), String> {
+    let state = app.state::<AppState>();
+
+    let game = {
+        let launcher = state.launcher.lock();
+        launcher
+            .games
+            .iter()
+            .find(|g| g.id == game_id)
+            .cloned()
+            .ok_or_else(|| format!("Game not found: {game_id}"))?
+    };
+
+    // Launch via Steam protocol URL for Steam games
+    if game.source == GameSource::Steam {
+        let source_id = game
+            .source_id
+            .as_ref()
+            .ok_or_else(|| format!("Missing Steam app ID for game: {}", game.name))?;
+        if source_id.chars().all(|c| c.is_ascii_digit()) && !source_id.is_empty() {
+            let url = format!("steam://rungameid/{source_id}");
+            app.opener()
+                .open_url(&url, None::<&str>)
+                .map_err(|e| format!("Failed to launch: {e}"))?;
+        } else {
+            return Err(format!("Invalid source_id: {source_id}"));
+        }
+    } else {
+        // For non-Steam games, launch via exe_path directly
+        if let Some(exe_path) = &game.exe_path {
+            let path = std::path::Path::new(exe_path);
+            // Validate the exe path exists and has an .exe extension
+            if !path.exists() {
+                return Err(format!("Executable not found: {exe_path}"));
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("exe") {
+                return Err(format!("Invalid executable: {exe_path}"));
+            }
+            app.opener()
+                .open_path(exe_path, None::<&str>)
+                .map_err(|e| format!("Failed to launch: {e}"))?;
+        } else {
+            return Err(format!("No executable path for game: {}", game.name));
+        }
+    }
+
+    // Attach the session watcher. Steam games are watched via Steam's own
+    // running-flag (keyed by appid): authoritative, and no exe guessing. The
+    // launch branch above already validated the appid is present + all-digits.
+    if game.source == GameSource::Steam {
+        let app_id = game.source_id.unwrap_or_default();
+        crate::process_watch::spawn_steam_watch(app.clone(), game_id.to_owned(), app_id);
+    } else {
+        // Non-Steam: watch by executable name, resolving it on demand if needed.
+        let mut exe_name = game.exe_name.clone();
+        if exe_name.is_empty() {
+            if let Some(dir) = &game.install_dir {
+                let (resolved_name, resolved_path) =
+                    discovery::steam::resolve_game_exe(std::path::Path::new(dir));
+                exe_name = resolved_name;
+                // Cache the resolved exe for next time.
+                let mut launcher = state.launcher.lock();
+                if let Some(g) = launcher.games.iter_mut().find(|g| g.id == game_id) {
+                    g.exe_name.clone_from(&exe_name);
+                    g.exe_path = resolved_path;
+                }
+                drop(launcher);
+                if let Err(e) = state.save() {
+                    tracing::warn!("Failed to cache resolved exe: {e}");
+                }
+            }
+        }
+        // No process name to watch -- reset to idle (the game did launch).
+        if exe_name.is_empty() {
+            crate::util::log_if_err("emit game-finished", app.emit("game-finished", game_id));
+            state.active_sessions.lock().remove(game_id);
+        } else {
+            crate::process_watch::spawn_game_watch(app.clone(), game_id.to_owned(), exe_name);
+        }
+    }
+
+    // Update last_played timestamp
+    {
+        let mut launcher = state.launcher.lock();
+        if let Some(g) = launcher.games.iter_mut().find(|g| g.id == game_id) {
+            g.last_played = Some(chrono::Local::now().to_rfc3339());
+        }
+    }
+    if let Err(e) = state.save() {
+        tracing::error!("Failed to save state: {e}");
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a Tauri command receives its arguments by value"
+)]
+pub(crate) fn open_game_logs(app: tauri::AppHandle) -> Result<(), String> {
+    let log_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Cannot determine log directory: {e}"))?;
+    let log_path = log_dir.join("launcher.log");
+    if log_path.exists() {
+        app.opener()
+            .open_path(log_path.to_string_lossy().as_ref(), None::<&str>)
+            .map_err(|e| format!("Failed to open log: {e}"))
+    } else {
+        Err(format!("launcher.log not found in {}", log_dir.display()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{merge_scan, ScanOutcome};
+    use crate::models::{Game, GameSource};
+
+    fn game(id: &str, name: &str, minutes: u64) -> Game {
+        Game {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            source: GameSource::Steam,
+            play_time_minutes: minutes,
+            last_played: Some("2026-09-15".to_owned()),
+            ..Game::default()
+        }
+    }
+
+    #[test]
+    fn complete_scan_carries_playtime_across() {
+        let stored = vec![game("steam_1", "One", 300)];
+        let merged = merge_scan(
+            &stored,
+            ScanOutcome {
+                games: vec![game("steam_1", "One", 0)],
+                complete: true,
+            },
+        );
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].play_time_minutes, 300);
+        assert_eq!(merged[0].last_played.as_deref(), Some("2026-09-15"));
+    }
+
+    #[test]
+    fn complete_scan_drops_uninstalled_games() {
+        let stored = vec![game("steam_1", "One", 300), game("steam_2", "Two", 50)];
+        let merged = merge_scan(
+            &stored,
+            ScanOutcome {
+                games: vec![game("steam_1", "One", 0)],
+                complete: true,
+            },
+        );
+        assert_eq!(merged.len(), 1, "a complete scan is authoritative");
+        assert_eq!(merged[0].id, "steam_1");
+    }
+
+    /// A Steam scan knows nothing of other launchers: a complete one drops the
+    /// Steam games it omits, never a game from another source.
+    #[test]
+    fn complete_scan_keeps_other_sources() {
+        let mut manual = game("manual_1", "Alpha", 40);
+        manual.source = GameSource::Manual;
+        let mut epic = game("epic_1", "Zeta", 20);
+        epic.source = GameSource::Epic;
+        let stored = vec![
+            manual,
+            game("steam_1", "One", 300),
+            game("steam_2", "Two", 50),
+            epic,
+        ];
+        let merged = merge_scan(
+            &stored,
+            ScanOutcome {
+                games: vec![game("steam_1", "One", 0)],
+                complete: true,
+            },
+        );
+        let ids: Vec<&str> = merged.iter().map(|g| g.id.as_str()).collect();
+        assert_eq!(ids, ["manual_1", "steam_1", "epic_1"], "sorted by name");
+        let minutes: Vec<u64> = merged.iter().map(|g| g.play_time_minutes).collect();
+        assert_eq!(minutes, [40, 300, 20]);
+    }
+
+    /// The regression that matters: a library on an unavailable drive must not
+    /// erase those games or their playtime.
+    #[test]
+    fn partial_scan_keeps_games_it_did_not_reach() {
+        let stored = vec![game("steam_1", "One", 300), game("steam_2", "Two", 50)];
+        let merged = merge_scan(
+            &stored,
+            ScanOutcome {
+                games: vec![game("steam_1", "One", 0)],
+                complete: false,
+            },
+        );
+        assert_eq!(merged.len(), 2, "partial scan must not drop stored games");
+        let two = merged.iter().find(|g| g.id == "steam_2").unwrap();
+        assert_eq!(two.play_time_minutes, 50);
+    }
+
+    /// Steam entirely unreachable: the scan is empty AND partial, which is the
+    /// startup case that silently wiped the library.
+    #[test]
+    fn empty_partial_scan_keeps_the_whole_library() {
+        let stored = vec![game("steam_1", "One", 300), game("steam_2", "Two", 50)];
+        let merged = merge_scan(
+            &stored,
+            ScanOutcome {
+                games: Vec::new(),
+                complete: false,
+            },
+        );
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged.iter().map(|g| g.play_time_minutes).sum::<u64>(), 350);
+    }
+
+    #[test]
+    fn empty_complete_scan_clears_the_library() {
+        let stored = vec![game("steam_1", "One", 300)];
+        let merged = merge_scan(
+            &stored,
+            ScanOutcome {
+                games: Vec::new(),
+                complete: true,
+            },
+        );
+        assert!(merged.is_empty(), "a clean scan finding nothing is truth");
+    }
+}

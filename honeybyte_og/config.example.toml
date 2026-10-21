@@ -1,0 +1,17 @@
+# OPTIONAL legacy fallback for the Gemini API key.
+#
+# The recommended way to set your key is in the app: open Settings -> Providers
+# and paste it there (it is stored in the Windows Credential Manager, not in
+# plaintext).
+#
+# If you prefer a file, copy this to config.toml next to launcher.exe and set
+# your key below. config.toml is gitignored -- never commit your real key.
+# Claude and OpenAI run through their CLIs (claude / codex) and need no key here.
+
+[api.gemini]
+# Free key: https://aistudio.google.com/apikey
+api_key = "your-gemini-api-key-here"
+# The model is chosen in Settings -> Providers. A model line here would take
+# precedence over the app's default when Settings says "Default", so leave it out
+# unless you need one:
+# model = "gemini-3.6-flash"

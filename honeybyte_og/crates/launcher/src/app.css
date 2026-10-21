@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  /* ── Neutral inks (cover art supplies the color) ── */
+  --color-ink-0: #0b0b0d;
+  --color-ink-1: #131316;
+  --color-ink-2: #191920;
+  --color-ink-3: #23232b;
+
+  /* ── Hairlines ── */
+  --color-line: rgba(255, 255, 255, 0.075);
+  --color-line-2: rgba(255, 255, 255, 0.04);
+
+  /* ── Text ── */
+  --color-t-hi: #ececef;
+  --color-t-mid: #9a9aa7;
+  --color-t-lo: #5c5c68;
+
+  /* ── Semantic status ── */
+  --color-ok: #4ad6a0;
+  --color-warn: #e8c15a;
+  --color-err: #e8636b;
+
+  /* ── Fonts ── */
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* ── Animations ── */
+  --animate-fade-up: fade-up 0.5s ease-out both;
+  --animate-pulse-soft: pulse-soft 4s ease-in-out infinite;
+  --animate-pulse-fast: pulse-soft 2.4s ease-in-out infinite;
+  --animate-beam: beam 2.4s linear infinite;
+}
+
+/*
+ * The live accent is a runtime CSS variable, set per selected game by
+ * lib/stores/accent.svelte.ts (dominant color from the cover art, with a
+ * hashed-hue fallback). Everything accent-driven reads var(--accent).
+ */
+:root {
+  --accent: #e0a23c;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-ink-0);
+  color: var(--color-t-hi);
+  overflow: hidden;
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+}
+
+@keyframes beam {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Custom scrollbar ── */
+body,
+.overflow-y-auto,
+.overflow-auto {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}

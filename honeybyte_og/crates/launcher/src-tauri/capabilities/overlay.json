@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Overlay: only the commands its UI calls; https links open in the browser via open_url; no file or folder opens.",
+  "windows": ["overlay"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging",
+    "allow-get-settings",
+    "allow-available-providers",
+    "allow-set-active-provider",
+    "allow-ask-sage",
+    "allow-cancel-sage",
+    "allow-translate-screen",
+    "allow-hide-overlay",
+    "allow-link-game",
+    "allow-open-url",
+    "allow-set-hints-first"
+  ]
+}

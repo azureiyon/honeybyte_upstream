@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-focus",
+    "allow-get-games",
+    "allow-scan-games",
+    "allow-launch-game",
+    "allow-open-game-logs",
+    "allow-open-config-folder",
+    "allow-update-settings",
+    "allow-state-health",
+    "allow-set-gemini-key",
+    "allow-recheck-clis",
+    "allow-hotkey-status",
+    "allow-open-url",
+    "allow-get-settings",
+    "allow-available-providers",
+    "allow-set-active-provider"
+  ]
+}

@@ -1,0 +1,226 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "rustc",
+      "pattern": [
+        {
+          "regexp": "^(error|warning)(?:\\[(\\S+)\\])?: (.+)$",
+          "severity": 1,
+          "code": 2,
+          "message": 3
+        },
+        {
+          "regexp": "^\\s*--> (.+):(\\d+):(\\d+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        }
+      ]
+    },
+    {
+      "owner": "rustfmt",
+      "pattern": [
+        {
+          "regexp": "^(Diff in (?:\\\\\\\\\\?\\\\)?(.+):(\\d+)):$",
+          "message": 1,
+          "file": 2,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "owner": "rust-test-panic",
+      "pattern": [
+        {
+          "regexp": "^thread '([^']+)'(?: \\(\\d+\\))? panicked at (.+):(\\d+):(\\d+):$",
+          "code": 1,
+          "file": 2,
+          "line": 3,
+          "column": 4
+        },
+        {
+          "regexp": "^(.+)$",
+          "message": 1
+        }
+      ]
+    },
+    {
+      "owner": "cargo-deny",
+      "pattern": [
+        {
+          "regexp": "^(error)\\[(\\S+)\\]: (.+)$",
+          "severity": 1,
+          "code": 2,
+          "message": 3
+        },
+        {
+          "regexp": "^\\s+\u250c\u2500 (.+):(\\d+):(\\d+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        }
+      ]
+    },
+    {
+      "owner": "svelte-check",
+      "fromPath": "crates/launcher/package.json",
+      "pattern": [
+        {
+          "regexp": "^\\d+ (ERROR|WARNING) \"(.+)\" (\\d+):(\\d+) \"(.*)\"$",
+          "severity": 1,
+          "file": 2,
+          "line": 3,
+          "column": 4,
+          "message": 5
+        }
+      ]
+    },
+    {
+      "owner": "prettier",
+      "fromPath": "crates/launcher/package.json",
+      "pattern": [
+        {
+          "regexp": "^(\\[warn\\] (?!\\.\\./)(\\S+\\.\\w+))$",
+          "message": 1,
+          "file": 2
+        }
+      ]
+    },
+    {
+      "owner": "actionlint",
+      "pattern": [
+        {
+          "regexp": "^(.+?):(\\d+):(\\d+): (.+) \\[([a-z-]+)\\]$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4,
+          "code": 5
+        }
+      ]
+    },
+    {
+      "owner": "zizmor-help",
+      "severity": "notice",
+      "pattern": [
+        {
+          "regexp": "^help\\[(\\S+)\\]: (.+)$",
+          "code": 1,
+          "message": 2
+        },
+        {
+          "regexp": "^\\s*--> (.+):(\\d+):(\\d+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        }
+      ]
+    },
+    {
+      "owner": "gitleaks",
+      "pattern": [
+        {
+          "regexp": "^Fingerprint:\\s+([0-9a-f]{7,40}):(.+):([\\w.-]+):(\\d+)$",
+          "file": 2,
+          "message": 3,
+          "code": 3,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "owner": "pin-guard",
+      "pattern": [
+        {
+          "regexp": "^pin guard: ([^:\\s]+):([0-9]+): (.+)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      ]
+    },
+    {
+      "owner": "hygiene-scan",
+      "pattern": [
+        {
+          "regexp": "^([^\\s:][^:]*):([0-9]+): error: (.+)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      ]
+    },
+    {
+      "owner": "typos",
+      "pattern": [
+        {
+          "regexp": "^([^\\s:][^:]*):([0-9]+):([0-9]+): error: (`[^`]+` should be .+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      ]
+    },
+    {
+      "owner": "shellcheck",
+      "pattern": [
+        {
+          "regexp": "^([^\\s:][^:]*):([0-9]+):([0-9]+): [a-z]+: (.+ \\[SC[0-9]+\\])$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      ]
+    },
+    {
+      "owner": "prettier-root",
+      "pattern": [
+        {
+          "regexp": "^(\\[warn\\] \\.\\./\\.\\./([^ ]+))$",
+          "message": 1,
+          "file": 2
+        }
+      ]
+    },
+    {
+      "owner": "knip",
+      "fromPath": "crates/launcher/package.json",
+      "severity": "error",
+      "pattern": [
+        {
+          "regexp": "^(\\S+)\\s+(?:\\S+\\s+)?([^\\s:]+):(\\d+):(\\d+)\\s*$",
+          "message": 1,
+          "file": 2,
+          "line": 3,
+          "column": 4
+        }
+      ]
+    },
+    {
+      "owner": "node-test",
+      "pattern": [
+        {
+          "regexp": "^\\s*not ok \\d+ - (.+)$",
+          "message": 1
+        },
+        {
+          "regexp": "^\\s*---$"
+        },
+        {
+          "regexp": "^\\s*duration_ms: \\S+$"
+        },
+        {
+          "regexp": "^\\s*type: 'test'$"
+        },
+        {
+          "regexp": "^\\s*location: '(.+):(\\d+):(\\d+)'$",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        }
+      ]
+    }
+  ]
+}
